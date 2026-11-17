@@ -1,0 +1,924 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Chess Tactical Assistant</title>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
+
+<style>
+:root {
+    --app-height: 850px; /* Change the height here */
+    --green: #24d366;
+    --red: #ff4545;
+    --yellow: #ffd43b;
+    --black: #080808;
+}
+
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    padding: 12px;
+    background: #000;
+    color: white;
+    font-family: Arial, sans-serif;
+}
+
+.app {
+    width: 100%;
+    height: var(--app-height);
+    max-height: calc(100vh - 24px);
+    min-height: 580px;
+    display: grid;
+    grid-template-columns: minmax(280px, 1.1fr) minmax(260px, .9fr);
+    gap: 16px;
+    padding: 14px;
+    background: var(--black);
+    border: 1px solid #252525;
+    border-radius: 16px;
+    overflow: hidden;
+}
+
+.board-area {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-width: 0;
+    min-height: 0;
+}
+
+.board-wrap {
+    width: min(100%, calc(var(--app-height) - 30px));
+    max-height: 100%;
+    aspect-ratio: 1;
+    position: relative;
+}
+
+.board {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    grid-template-columns: repeat(8, 1fr);
+    grid-template-rows: repeat(8, 1fr);
+    border: 3px solid #222;
+    overflow: hidden;
+}
+
+.square {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 0;
+    min-height: 0;
+    cursor: pointer;
+    user-select: none;
+}
+
+.light { background: #eeeeee; }
+.dark { background: #398b20; }
+
+.square.selected {
+    box-shadow: inset 0 0 0 100px rgba(255, 220, 0, .35);
+}
+
+.square.possible::after {
+    content: "";
+    position: absolute;
+    width: 24%;
+    height: 24%;
+    border-radius: 50%;
+    background: rgba(0,0,0,.3);
+}
+
+.square.possible.capture::after {
+    width: 85%;
+    height: 85%;
+    background: transparent;
+    border: 5px solid rgba(0,0,0,.3);
+}
+
+.piece {
+    z-index: 2;
+    font-family: "Segoe UI Symbol", "DejaVu Sans", serif;
+    font-size: clamp(30px, 7vw, 70px);
+    line-height: 1;
+    user-select: none;
+    pointer-events: none;
+}
+
+/* Only black pawns are smaller */
+.piece.black-pawn {
+    font-size: clamp(21px, 4.2vw, 43px);
+}
+
+.coordinate {
+    position: absolute;
+    z-index: 3;
+    font-size: 10px;
+    font-weight: bold;
+    opacity: .7;
+    pointer-events: none;
+}
+
+.rank-label { top: 2px; left: 3px; }
+.file-label { bottom: 2px; right: 3px; }
+
+#arrows {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 5;
+    pointer-events: none;
+}
+
+.side-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    min-width: 0;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 4px;
+}
+
+h1 {
+    font-size: clamp(21px, 3vw, 30px);
+    margin: 0;
+}
+
+.subtitle {
+    color: #aaa;
+    font-size: 13px;
+    line-height: 1.5;
+}
+
+.panel {
+    padding: 14px;
+    background: #151515;
+    border: 1px solid #292929;
+    border-radius: 12px;
+}
+
+.panel h2 {
+    font-size: 16px;
+    margin: 0 0 10px;
+}
+
+.status {
+    font-size: 14px;
+    line-height: 1.5;
+}
+
+.engine-status {
+    color: #aaa;
+    font-size: 12px;
+    margin-top: 7px;
+}
+
+.recommendation {
+    font-size: 21px;
+    font-weight: bold;
+    color: var(--green);
+    overflow-wrap: anywhere;
+}
+
+.explanation {
+    color: #aaa;
+    font-size: 13px;
+    line-height: 1.5;
+    margin-top: 7px;
+}
+
+.tactic {
+    border-left: 3px solid var(--yellow);
+    padding-left: 10px;
+    margin: 10px 0;
+    font-size: 13px;
+    line-height: 1.5;
+}
+
+.tactic.best { border-color: var(--green); }
+.tactic.sacrifice { border-color: var(--red); }
+
+.move-line {
+    color: #ddd;
+    font-size: 13px;
+    line-height: 1.8;
+    overflow-wrap: anywhere;
+}
+
+.button-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+button {
+    background: #262626;
+    color: white;
+    border: 1px solid #444;
+    padding: 10px 13px;
+    border-radius: 8px;
+    cursor: pointer;
+}
+
+button:hover { background: #383838; }
+button:disabled { opacity: .35; cursor: not-allowed; }
+.primary { background: #167b39; border-color: #167b39; }
+
+.legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    font-size: 12px;
+    color: #aaa;
+}
+
+.dot {
+    display: inline-block;
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    margin-right: 5px;
+}
+
+select {
+    background: #252525;
+    color: white;
+    border: 1px solid #444;
+    padding: 8px;
+    border-radius: 7px;
+}
+
+@media(max-width: 760px) {
+    body { padding: 5px; }
+
+    .app {
+        height: auto;
+        max-height: none;
+        min-height: 0;
+        grid-template-columns: 1fr;
+        padding: 9px;
+    }
+
+    .board-wrap {
+        width: min(100%, 92vw);
+        max-height: none;
+    }
+
+    .side-panel { overflow: visible; }
+
+    .piece {
+        font-size: clamp(28px, 10vw, 55px);
+    }
+
+    .piece.black-pawn {
+        font-size: clamp(20px, 6vw, 36px);
+    }
+}
+</style>
+</head>
+
+<body>
+
+<div class="app">
+
+    <section class="board-area">
+        <div class="board-wrap">
+            <div class="board" id="board"></div>
+
+            <svg id="arrows" viewBox="0 0 800 800"
+                 preserveAspectRatio="none">
+                <defs>
+                    <marker id="greenHead" markerWidth="8" markerHeight="8"
+                        refX="6" refY="4" orient="auto">
+                        <path d="M0 0 L8 4 L0 8 Z" fill="#24d366"/>
+                    </marker>
+                    <marker id="redHead" markerWidth="8" markerHeight="8"
+                        refX="6" refY="4" orient="auto">
+                        <path d="M0 0 L8 4 L0 8 Z" fill="#ff4545"/>
+                    </marker>
+                    <marker id="yellowHead" markerWidth="8" markerHeight="8"
+                        refX="6" refY="4" orient="auto">
+                        <path d="M0 0 L8 4 L0 8 Z" fill="#ffd43b"/>
+                    </marker>
+                </defs>
+                <g id="arrowLines"></g>
+            </svg>
+        </div>
+    </section>
+
+    <aside class="side-panel">
+
+        <h1>Chess Tactical Assistant</h1>
+        <div class="subtitle">
+            From the opening to the endgame. Find strong moves,
+            tactical combinations, sacrifices and checkmate opportunities.
+        </div>
+
+        <div class="panel">
+            <h2>Game status</h2>
+            <div class="status" id="gameStatus">White to move</div>
+            <div class="engine-status" id="engineStatus">
+                Waiting for analysis...
+            </div>
+        </div>
+
+        <div class="panel">
+            <h2>Recommended move</h2>
+            <div class="recommendation" id="bestMove">Analyzing...</div>
+            <div class="explanation" id="bestExplanation">
+                Waiting for the chess engine.
+            </div>
+        </div>
+
+        <div class="panel">
+            <h2>Tactical opportunities</h2>
+            <div id="tactics">Analyzing position...</div>
+        </div>
+
+        <div class="panel">
+            <h2>Move continuation</h2>
+            <div class="move-line" id="continuation">
+                Waiting for analysis...
+            </div>
+        </div>
+
+        <div class="panel">
+            <h2>Controls</h2>
+            <div class="button-row">
+                <button class="primary" id="analyzeBtn">Analyze</button>
+                <button id="undoBtn">Undo</button>
+                <button id="restartBtn">Restart</button>
+                <button id="flipBtn">Flip board</button>
+            </div>
+        </div>
+
+        <div class="panel">
+            <h2>Arrow guide</h2>
+            <div class="legend">
+                <span><i class="dot" style="background:#24d366"></i>Best move</span>
+                <span><i class="dot" style="background:#ff4545"></i>Possible sacrifice</span>
+                <span><i class="dot" style="background:#ffd43b"></i>Alternative</span>
+            </div>
+            <div class="explanation">
+                The main arrow shows your recommended move.
+                Other arrows can show alternative moves and tactical ideas.
+                Analysis updates after every move.
+            </div>
+        </div>
+
+    </aside>
+</div>
+
+<script>
+/* ===================================
+   GAME SETUP
+=================================== */
+
+const game = new Chess();
+
+const whitePieces = {
+    k: "♔", q: "♕", r: "♖",
+    b: "♗", n: "♘", p: "♙"
+};
+
+const blackPieces = {
+    k: "♚", q: "♛", r: "♜",
+    b: "♝", n: "♞", p: "♟︎"
+};
+
+const boardElement = document.getElementById("board");
+const arrowGroup = document.getElementById("arrowLines");
+
+let selectedSquare = null;
+let flipped = false;
+let analysisToken = 0;
+let analysisLines = [];
+let lastBestMove = null;
+let history = [];
+
+/* ===================================
+   BOARD DISPLAY
+=================================== */
+
+function renderBoard() {
+    boardElement.innerHTML = "";
+
+    const files = flipped
+        ? ["h","g","f","e","d","c","b","a"]
+        : ["a","b","c","d","e","f","g","h"];
+
+    const ranks = flipped
+        ? [1,2,3,4,5,6,7,8]
+        : [8,7,6,5,4,3,2,1];
+
+    for (const rank of ranks) {
+        for (const file of files) {
+            const squareName = file + rank;
+            const piece = game.get(squareName);
+
+            const square = document.createElement("div");
+            const isLight = (files.indexOf(file) + ranks.indexOf(rank)) % 2 === 1;
+
+            square.className = "square " + (isLight ? "light" : "dark");
+            square.dataset.square = squareName;
+
+            if (selectedSquare === squareName) {
+                square.classList.add("selected");
+            }
+
+            if (selectedSquare) {
+                const moves = game.moves({
+                    square: selectedSquare,
+                    verbose: true
+                });
+
+                const possible = moves.find(m => m.to === squareName);
+
+                if (possible) {
+                    square.classList.add("possible");
+                    if (possible.captured || possible.flags.includes("e")) {
+                        square.classList.add("capture");
+                    }
+                }
+            }
+
+            if (piece) {
+                const span = document.createElement("span");
+                span.className = "piece";
+
+                if (piece.color === "b" && piece.type === "p") {
+                    span.classList.add("black-pawn");
+                }
+
+                span.textContent =
+                    piece.color === "w"
+                        ? whitePieces[piece.type]
+                        : blackPieces[piece.type];
+
+                square.appendChild(span);
+            }
+
+            if (file === files[0]) {
+                const label = document.createElement("span");
+                label.className = "coordinate rank-label";
+                label.textContent = rank;
+                square.appendChild(label);
+            }
+
+            if (rank === ranks[ranks.length - 1]) {
+                const label = document.createElement("span");
+                label.className = "coordinate file-label";
+                label.textContent = file;
+                square.appendChild(label);
+            }
+
+            square.addEventListener("click", () => handleSquareClick(squareName));
+            boardElement.appendChild(square);
+        }
+    }
+
+    updateStatus();
+}
+
+/* ===================================
+   PLAYER MOVES
+=================================== */
+
+function handleSquareClick(square) {
+    if (game.game_over()) return;
+
+    const piece = game.get(square);
+
+    if (selectedSquare === null) {
+        if (piece && piece.color === game.turn()) {
+            selectedSquare = square;
+        }
+        renderBoard();
+        return;
+    }
+
+    if (piece && piece.color === game.turn()) {
+        selectedSquare = square;
+        renderBoard();
+        return;
+    }
+
+    const move = game.move({
+        from: selectedSquare,
+        to: square,
+        promotion: "q"
+    });
+
+    if (move) {
+        history.push(move);
+        selectedSquare = null;
+        renderBoard();
+        clearArrows();
+        analyzePosition();
+    } else {
+        selectedSquare = null;
+        renderBoard();
+    }
+}
+
+function undoMove() {
+    if (!history.length) return;
+
+    game.undo();
+    history.pop();
+
+    selectedSquare = null;
+    renderBoard();
+    clearArrows();
+    analyzePosition();
+}
+
+function restartGame() {
+    game.reset();
+    history = [];
+    selectedSquare = null;
+    renderBoard();
+    clearArrows();
+    analyzePosition();
+}
+
+function flipBoard() {
+    flipped = !flipped;
+    renderBoard();
+    drawAnalysisArrows();
+}
+
+/* ===================================
+   STATUS
+=================================== */
+
+function updateStatus() {
+    const element = document.getElementById("gameStatus");
+
+    if (game.in_checkmate()) {
+        element.textContent =
+            "CHECKMATE! " + (game.turn() === "w" ? "Black" : "White") + " wins!";
+    } else if (game.in_draw()) {
+        element.textContent = "Game drawn.";
+    } else if (game.in_check()) {
+        element.textContent =
+            (game.turn() === "w" ? "White" : "Black") + " is in check!";
+    } else {
+        element.textContent =
+            (game.turn() === "w" ? "White" : "Black") + " to move.";
+    }
+}
+
+/* ===================================
+   ARROW SYSTEM
+=================================== */
+
+function squareCenter(square) {
+    const file = square.charCodeAt(0) - 97;
+    const rank = Number(square[1]) - 1;
+
+    const x = flipped ? (7 - file) : file;
+    const y = flipped ? rank : (7 - rank);
+
+    return {
+        x: x * 100 + 50,
+        y: y * 100 + 50
+    };
+}
+
+function clearArrows() {
+    arrowGroup.innerHTML = "";
+}
+
+function drawArrow(move, color, marker, width) {
+    if (!move || move.length < 4) return;
+
+    const from = squareCenter(move.substring(0,2));
+    const to = squareCenter(move.substring(2,4));
+
+    const dx = to.x - from.x;
+    const dy = to.y - from.y;
+    const length = Math.sqrt(dx*dx + dy*dy);
+
+    if (!length) return;
+
+    const startX = from.x + dx / length * 22;
+    const startY = from.y + dy / length * 22;
+    const endX = to.x - dx / length * 27;
+    const endY = to.y - dy / length * 27;
+
+    const line = document.createElementNS(
+        "http://www.w3.org/2000/svg", "line"
+    );
+
+    line.setAttribute("x1", startX);
+    line.setAttribute("y1", startY);
+    line.setAttribute("x2", endX);
+    line.setAttribute("y2", endY);
+    line.setAttribute("stroke", color);
+    line.setAttribute("stroke-width", width);
+    line.setAttribute("stroke-linecap", "round");
+    line.setAttribute("marker-end", "url(#" + marker + ")");
+    line.setAttribute("opacity", ".9");
+
+    arrowGroup.appendChild(line);
+}
+
+function drawAnalysisArrows() {
+    clearArrows();
+
+    if (!analysisLines.length || game.game_over()) return;
+
+    analysisLines.slice(0,3).forEach((line, index) => {
+        if (!line.move) return;
+
+        if (index === 0) {
+            drawArrow(line.move, "#24d366", "greenHead", 11);
+        } else if (index === 1) {
+            drawArrow(line.move, "#ffd43b", "yellowHead", 7);
+        } else {
+            drawArrow(line.move, "#ff4545", "redHead", 6);
+        }
+    });
+}
+
+/* ===================================
+   ANALYSIS
+   Uses Lichess Cloud Evaluation when
+   a position is available, then falls
+   back to Stockfish Online.
+=================================== */
+
+async function analyzePosition() {
+    const token = ++analysisToken;
+
+    if (game.game_over()) {
+        document.getElementById("bestMove").textContent = "Game finished";
+        document.getElementById("bestExplanation").textContent =
+            "There are no more legal moves.";
+        document.getElementById("tactics").textContent =
+            "The game has ended.";
+        document.getElementById("continuation").textContent =
+            "Game over.";
+        analysisLines = [];
+        clearArrows();
+        document.getElementById("engineStatus").textContent = "Game finished";
+        return;
+    }
+
+    document.getElementById("engineStatus").textContent =
+        "Searching for an evaluation...";
+    document.getElementById("bestMove").textContent = "Analyzing...";
+    document.getElementById("bestExplanation").textContent =
+        "Calculating the strongest continuation...";
+    document.getElementById("tactics").textContent =
+        "Looking for tactical opportunities...";
+    document.getElementById("continuation").textContent =
+        "Calculating moves...";
+
+    analysisLines = [];
+    clearArrows();
+
+    const fen = game.fen();
+
+    try {
+        /* First try the Lichess cloud evaluation */
+        const url =
+            "https://lichess.org/api/cloud-eval?fen=" +
+            encodeURIComponent(fen) +
+            "&multiPv=3";
+
+        const response = await fetch(url);
+
+        if (token !== analysisToken) return;
+
+        if (response.ok) {
+            const data = await response.json();
+
+            if (data.pvs && data.pvs.length) {
+                analysisLines = data.pvs.map(pv => ({
+                    move: pv.moves.split(" ")[0],
+                    moves: pv.moves,
+                    cp: pv.cp,
+                    mate: pv.mate
+                }));
+
+                displayAnalysis(data);
+                return;
+            }
+        }
+    } catch (error) {
+        /* Continue to fallback */
+    }
+
+    if (token !== analysisToken) return;
+
+    try {
+        /* Fallback evaluation service */
+        const fallback =
+            "https://stockfish.online/api/s/v2.php?fen=" +
+            encodeURIComponent(fen) +
+            "&depth=15";
+
+        const response = await fetch(fallback);
+
+        if (token !== analysisToken) return;
+
+        if (!response.ok) throw new Error("Analysis unavailable");
+
+        const data = await response.json();
+
+        if (!data.success || !data.bestmove) {
+            throw new Error("No engine result");
+        }
+
+        const best = data.bestmove.match(/bestmove\s+([a-h][1-8][a-h][1-8][qrbn]?)/);
+
+        if (!best) throw new Error("Invalid engine move");
+
+        const moves = data.continuation || best[1];
+
+        analysisLines = [{
+            move: best[1],
+            moves: moves,
+            cp: data.evaluation !== undefined
+                ? Math.round(Number(data.evaluation) * 100)
+                : 0,
+            mate: data.mate
+        }];
+
+        displayFallback(data);
+    } catch (error) {
+        if (token !== analysisToken) return;
+
+        document.getElementById("engineStatus").textContent =
+            "Analysis service unavailable. Check your internet connection.";
+        document.getElementById("bestMove").textContent =
+            "Could not analyze";
+        document.getElementById("bestExplanation").textContent =
+            "Try pressing Analyze again in a moment.";
+        document.getElementById("tactics").textContent =
+            "No engine result is available.";
+        document.getElementById("continuation").textContent =
+            "Waiting for a successful analysis.";
+    }
+}
+
+/* ===================================
+   DISPLAY ANALYSIS
+=================================== */
+
+function displayAnalysis(data) {
+    const best = analysisLines[0];
+
+    if (!best) return;
+
+    lastBestMove = best.move;
+
+    document.getElementById("engineStatus").textContent =
+        "Cloud evaluation · depth " + (data.depth || "available");
+
+    document.getElementById("bestMove").textContent =
+        best.move.substring(0,2) + " → " + best.move.substring(2,4);
+
+    document.getElementById("bestExplanation").textContent =
+        best.mate !== undefined && best.mate !== null
+            ? "The evaluation indicates a forced mate in " + best.mate + "."
+            : "Best available engine move. Evaluation: " +
+              (best.cp / 100).toFixed(2);
+
+    showTactics(best);
+    showContinuation();
+    drawAnalysisArrows();
+}
+
+function displayFallback(data) {
+    const best = analysisLines[0];
+
+    lastBestMove = best.move;
+
+    document.getElementById("engineStatus").textContent =
+        "Stockfish Online · depth 15";
+
+    document.getElementById("bestMove").textContent =
+        best.move.substring(0,2) + " → " + best.move.substring(2,4);
+
+    document.getElementById("bestExplanation").textContent =
+        data.mate !== null && data.mate !== undefined
+            ? "Mate evaluation: " + data.mate
+            : "Engine evaluation: " + data.evaluation;
+
+    showTactics(best);
+    showContinuation();
+    drawAnalysisArrows();
+}
+
+/* ===================================
+   TACTICAL OPPORTUNITIES
+=================================== */
+
+function showTactics(best) {
+    const container = document.getElementById("tactics");
+    container.innerHTML = "";
+
+    const bestText = document.createElement("div");
+    bestText.className = "tactic best";
+    bestText.textContent =
+        "Recommended: " + best.move +
+        " — the strongest move returned by the engine.";
+    container.appendChild(bestText);
+
+    if (best.mate !== undefined && best.mate !== null) {
+        const mate = document.createElement("div");
+        mate.className = "tactic best";
+        mate.textContent =
+            "Checkmate opportunity: the engine sees mate in " + best.mate + ".";
+        container.appendChild(mate);
+    }
+
+    if (analysisLines.length > 1) {
+        const alt = document.createElement("div");
+        alt.className = "tactic";
+        alt.textContent =
+            "Alternative: " + analysisLines[1].move +
+            " — another evaluated continuation.";
+        container.appendChild(alt);
+    }
+
+    if (analysisLines.length > 2) {
+        const alt2 = document.createElement("div");
+        alt2.className = "tactic";
+        alt2.textContent =
+            "Second alternative: " + analysisLines[2].move + ".";
+        container.appendChild(alt2);
+    }
+
+    const sacrifice = document.createElement("div");
+    sacrifice.className = "tactic sacrifice";
+    sacrifice.textContent =
+        "Sacrifice ideas: check the continuation and evaluation before " +
+        "giving up material. An attractive sacrifice is not automatically sound.";
+    container.appendChild(sacrifice);
+}
+
+/* ===================================
+   MOVE CONTINUATION
+=================================== */
+
+function showContinuation() {
+    const container = document.getElementById("continuation");
+    container.innerHTML = "";
+
+    if (!analysisLines.length) {
+        container.textContent = "No continuation available.";
+        return;
+    }
+
+    analysisLines.forEach((line, index) => {
+        const item = document.createElement("div");
+        item.textContent =
+            (index === 0 ? "Best line: " : "Alternative: ") +
+            line.moves;
+        container.appendChild(item);
+    });
+}
+
+/* ===================================
+   BUTTONS
+=================================== */
+
+document.getElementById("analyzeBtn").addEventListener(
+    "click", analyzePosition
+);
+
+document.getElementById("undoBtn").addEventListener(
+    "click", undoMove
+);
+
+document.getElementById("restartBtn").addEventListener(
+    "click", restartGame
+);
+
+document.getElementById("flipBtn").addEventListener(
+    "click", flipBoard
+);
+
+/* ===================================
+   START
+=================================== */
+
+renderBoard();
+analyzePosition();
+
+</script>
+</body>
+</html>
